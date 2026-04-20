@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>PROJECT AEGIS — 3D Tactical Demo</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* VAYU DYNAMICS TACTICAL PALETTE */
+      --bg-dark:       #05080f; 
+      --bg-panel:      rgba(16, 20, 30, 0.85); 
+      --clr-primary:   #668ca0; 
+      --clr-orange:    #9e5a5a; 
+      --clr-amber:     #f59e0b; 
+      --clr-nvg:       #00ff66; 
+      
+      --font-main:     'Inter', sans-serif;
+      --font-mono:     'Courier Prime', monospace;
+      --text-main:     #dbe1e9; 
+      --text-muted:    #7da1ac; 
+      
+      --panel-border:  rgba(102, 140, 160, 0.3);
+      --btn-bg:        rgba(102, 140, 160, 0.05);
+    }
+
+    /* DAY MODE OVERRIDES */
+    body.day-mode {
+      --bg-dark:       #e8ecef;
+      --bg-panel:      rgba(255, 255, 255, 0.85);
+      --clr-primary:   #0055ff;
+      --clr-orange:    #ff3300;
+      --clr-amber:     #e67300;
+      --text-main:     #1a1d24;
+      --text-muted:    #5a6270;
+      --panel-border:  rgba(0, 0, 0, 0.1);
+      --btn-bg:        #ffffff;
+    }
+
+    body, html {
+      width: 100%; height: 100%; background-color: var(--bg-dark); 
+      color: var(--text-main); font-family: var(--font-main);
+      overflow: hidden; user-select: none; transition: background-color 0.5s ease;
+      touch-action: none; /* Prevents mobile browser pull-to-refresh */
+    }
+
+    body::before {
+        content: ''; position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
+        background: radial-gradient(circle at 50% 50%, rgba(102, 140, 160, 0.05) 0%, transparent 60%);
+        z-index: 0; pointer-events: none; 
+    }
+    body.day-mode::before { display: none; } 
+
+    #canvas-wrapper { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; transition: filter 0.5s; }
+
+    .vignette {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), radial-gradient(circle, rgba(0,0,0,0) 50%, rgba(5,8,15,0.9) 100%);
+      background-size: 100% 4px, 100% 100%;
+      pointer-events: none; z-index: 2; transition: all 0.5s;
+    }
+    body.day-mode .vignette {
+      background: linear-gradient(rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.05) 50%), radial-gradient(circle, rgba(255,255,255,0) 40%, rgba(180,190,200,0.5) 100%);
+      background-size: 100% 4px, 100% 100%;
+    }
+
+    .glass-panel {
+      position: absolute; z-index: 10;
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--panel-border); border-top: 3px solid var(--clr-primary);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(102, 140, 160, 0.1); 
+      padding: 24px; display: flex; flex-direction: column; transition: all 0.5s ease;
+    }
+    body.day-mode .glass-panel { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1); }
+
+    #hud { top: 30px; left: 40px; padding: 0; background: transparent; border: none; box-shadow: none; backdrop-filter: none; }
+    .hud-title { font-size: 32px; font-weight: 700; color: var(--clr-primary); letter-spacing: 6px; text-transform: uppercase; text-shadow: 0 0 10px rgba(102, 140, 160, 0.3); transition: color 0.5s; }
+    .hud-sub { font-size: 11px; font-family: var(--font-mono); font-weight: 700; color: var(--text-muted); letter-spacing: 3px; margin-top: 4px; text-transform: uppercase; transition: color 0.5s; }
+
+    #state-badge {
+      top: 30px; right: 40px; padding: 12px 28px; border-radius: 2px;
+      font-size: 13px; font-weight: 700; letter-spacing: 3px; color: var(--clr-primary);
+      border: 1px solid var(--clr-primary); background: rgba(102, 140, 160, 0.1);
+      box-shadow: 0 0 15px rgba(102, 140, 160, 0.2); transition: all 0.4s ease; backdrop-filter: blur(10px);
+      font-family: var(--font-mono);
+    }
+    body.day-mode #state-badge { background: rgba(255, 255, 255, 0.9); box-shadow: 0 4px 15px rgba(0, 85, 255, 0.15); }
+
+    #terminal-panel { bottom: 30px; left: 40px; width: 420px; height: 280px; }
+    .panel-header {
+      font-size: 11px; font-weight: 700; color: var(--clr-primary); letter-spacing: 2px;
+      text-transform: uppercase; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px; margin-bottom: 10px; font-family: var(--font-mono); transition: all 0.5s;
+    }
+    #terminal { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .term-line { font-size: 12px; font-family: var(--font-mono); font-weight: bold; opacity: 0; animation: fadeIn 0.4s forwards; }
+    @keyframes fadeIn { to { opacity: 1; } }
+    .term-line.primary { color: var(--clr-primary); }
+    .term-line.amber   { color: var(--clr-amber); }
+    .term-line.orange  { color: var(--clr-orange); }
+    .term-line.white   { color: var(--text-main); }
+    .term-line.dim     { color: var(--text-muted); font-weight: normal;}
+
+    #command-panel { bottom: 30px; right: 40px; width: 480px; }
+    
+    .cmd-btn {
+      width: 100%; padding: 16px; margin-bottom: 10px;
+      font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; background: var(--btn-bg); color: var(--clr-primary);
+      border: 1px solid var(--clr-primary); border-radius: 2px; cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+      clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+    }
+    .cmd-btn:hover:not(:disabled) { background: var(--clr-primary); color: var(--bg-dark); box-shadow: 0 0 20px rgba(102, 140, 160, 0.4); transform: scale(1.02); }
+    
+    .cmd-btn.amber { border-color: var(--clr-amber); color: var(--clr-amber); background: rgba(245, 158, 11, 0.05); }
+    body.day-mode .cmd-btn.amber { background: var(--btn-bg); }
+    .cmd-btn.amber:hover:not(:disabled) { background: var(--clr-amber); color: var(--bg-dark); box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); }
+    
+    .cmd-btn.orange { border-color: var(--clr-orange); color: var(--clr-orange); background: rgba(158, 90, 90, 0.05); }
+    body.day-mode .cmd-btn.orange { background: var(--btn-bg); }
+    .cmd-btn.orange:hover:not(:disabled) { background: var(--clr-orange); color: #fff; box-shadow: 0 0 20px rgba(158, 90, 90, 0.4); }
+
+    .cmd-btn.optics { border-color: var(--text-muted); color: var(--text-muted); background: transparent; clip-path: none; margin-bottom: 0; padding: 12px; font-size: 10px;}
+    .cmd-btn.optics:hover { border-color: var(--clr-nvg); color: var(--clr-nvg); box-shadow: 0 0 15px rgba(0, 255, 102, 0.2); background: rgba(0, 255, 102, 0.05); transform: none;}
+
+    #telemetry { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; }
+    .tele-cell {
+      background: rgba(0,0,0,0.5); border: 1px solid var(--panel-border); border-radius: 2px; padding: 10px;
+      font-size: 10px; color: var(--text-muted); letter-spacing: 1px; font-family: var(--font-mono); transition: all 0.5s;
+    }
+    body.day-mode .tele-cell { background: rgba(255,255,255,0.9); }
+    .tele-cell span { display: block; font-size: 14px; font-weight: 700; color: var(--text-main); margin-top: 4px; transition: color 0.5s;}
+
+    .slider-group { margin-bottom: 15px; }
+    .slider-label { font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); letter-spacing: 1px; margin-bottom: 8px; display:block; transition: color 0.5s;}
+    input[type="range"] { width: 100%; appearance: none; -webkit-appearance: none; height: 2px; background: rgba(102, 140, 160, 0.3); outline: none; }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+      background: var(--clr-primary); cursor: pointer; box-shadow: 0 0 10px var(--clr-primary);
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--clr-primary); }
+
+    .nvg-active { filter: sepia(100%) hue-rotate(70deg) saturate(300%) brightness(1.2) contrast(1.5); }
+
+    /* =========================================
+       RESPONSIVE DESIGN: TABLETS & MOBILE UI
+       ========================================= */
+    @media (max-width: 1024px) {
+      /* Tablet */
+      #hud { top: 20px; left: 20px; }
+      #state-badge { top: 20px; right: 20px; }
+      #terminal-panel { bottom: 20px; left: 20px; width: 320px; height: 240px; }
+      #command-panel { bottom: 20px; right: 20px; width: 400px; }
+    }
+
+    @media (max-width: 768px) {
+      /* Mobile Phones */
+      .glass-panel { padding: 16px; }
+      .hud-title { font-size: 20px; letter-spacing: 3px; }
+      .hud-sub { font-size: 8px; letter-spacing: 1px; }
+      #state-badge { top: 20px; right: 15px; padding: 8px 12px; font-size: 10px; }
+
+      /* Dock Terminal to the Top on Mobile */
+      #terminal-panel { 
+        top: 80px; bottom: auto; left: 15px; right: 15px; 
+        width: auto; height: 140px; 
+      }
+      
+      /* Span Command Panel across Bottom */
+      #command-panel { 
+        bottom: 15px; left: 15px; right: 15px; 
+        width: auto; 
+      }
+
+      .cmd-btn { padding: 12px; font-size: 11px; margin-bottom: 8px; letter-spacing: 1px;}
+      .cmd-btn.optics { padding: 10px; font-size: 9px; }
+      
+      /* Ensure action buttons fit */
+      #action-buttons { gap: 6px; }
+      #action-buttons .cmd-btn { padding: 8px; font-size: 9px; letter-spacing: 0px; }
+
+      .tele-cell { padding: 8px; font-size: 9px; }
+      .tele-cell span { font-size: 12px; }
+      
+      /* Make slider easier to grab on touch */
+      input[type="range"]::-webkit-slider-thumb { width: 20px; height: 20px; }
+    }
+
+    @media (max-width: 400px) {
+       /* Small Smartphones */
+       .hud-title { font-size: 16px; }
+       #terminal-panel { height: 120px; }
+       #action-buttons { grid-template-columns: 1fr; /* Stack buttons safely */ }
+       #action-buttons .cmd-btn { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+  <div id="canvas-wrapper"></div>
+  <div class="vignette"></div>
+
+  <div id="hud" class="glass-panel">
+    <div class="hud-title">VAYU DYNAMICS</div>
+    <div class="hud-sub">AEGIS BHARAT C4ISR NETWORK</div>
+  </div>
+  <div id="state-badge">STATE: STANDBY</div>
+
+  <div id="terminal-panel" class="glass-panel">
+    <div class="panel-header">// SECURE INTEL TERMINAL</div>
+    <div id="terminal"></div>
+  </div>
+
+  <div id="command-panel" class="glass-panel">
+    <div class="panel-header" style="display: flex; justify-content: space-between;">
+      <span>// COMMAND & CONTROL</span>
+      <span id="gps-readout" style="color:var(--text-muted);">LAT: -- LON: --</span>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;">
+      <button id="btn-nvg" class="cmd-btn optics" onclick="toggleNVG()">ENABLE NIGHT VISION</button>
+      <button id="btn-day" class="cmd-btn optics" onclick="toggleDayNight()">SWITCH TO DAY MODE</button>
+    </div>
+
+    <button id="btn-scan" class="cmd-btn" onclick="triggerState1()">INITIATE SPATIAL SCAN</button>
+    <button id="btn-uplink" class="cmd-btn amber" style="display:none;" onclick="triggerState2()">UPLINK C4ISR TELEMETRY</button>
+
+    <div id="range-control" class="slider-group" style="display:none;">
+      <span class="slider-label">TARGET RANGE OVERRIDE: <span id="range-val" style="color:var(--clr-primary);">085m</span></span>
+      <input type="range" id="range-slider" min="40" max="200" value="85" step="1" oninput="updateRange(this.value)"/>
+    </div>
+
+    <div id="action-buttons" style="display:none; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+      <button id="btn-soft" class="cmd-btn amber" style="margin:0; padding:12px; font-size:10px;" onclick="triggerSoftKill()">MESH INJECT<br>(EW SOFT KILL)</button>
+      <button id="btn-hard" class="cmd-btn orange" style="margin:0; padding:12px; font-size:10px;" onclick="triggerHardKill()">RCWS STRIKE<br>(KINETIC)</button>
+      <button id="btn-vayu" class="cmd-btn" style="margin:0; padding:12px; font-size:10px; border-color:var(--clr-primary);" onclick="triggerVayuKill()">AEGIS VAYU<br>(INTERCEPT)</button>
+    </div>
+
+    <button id="btn-reset" class="cmd-btn" style="margin-top: 10px; background: transparent; border-color: var(--panel-border); color: var(--text-muted); clip-path: none;" onclick="resetSystem()">[0] SYSTEM ZEROIZE / REBOOT</button>
+
+    <div id="telemetry">
+      <div class="tele-cell">FREQ <span style="color:var(--clr-primary);">8.4 GHz</span></div>
+      <div class="tele-cell">AZI/ELE <span id="tele-alt">-- / --</span></div>
+      <div class="tele-cell">ASSET <span id="tele-asset" style="color:var(--text-muted);">BHUMI (GND)</span></div>
+      <div class="tele-cell">C2 LINK <span id="tele-link" style="color:var(--clr-orange)">OFFLINE</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────────────────────────────────────────────────
+// 0. GLOBAL STATE & THREE.JS SETUP
+// ──────────────────────────────────────────────────────────────────────────
+let currentState = 0;
+let laserLine = null;
+let dataPacketMesh = null;
+let vayuFlying = false;
+let nvgActive = false;
+let isDayMode = false;
+let gpsInterval = null;
+
+const wrapper = document.getElementById('canvas-wrapper');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
+renderer.setClearColor(0x05080f, 1); 
+wrapper.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x05080f, 30, 120); 
+
+const camera = new THREE.PerspectiveCamera(50, wrapper.clientWidth / wrapper.clientHeight, 0.1, 500);
+camera.position.set(30, 20, 35);
+camera.lookAt(0, 4, 0);
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.2); 
+scene.add(ambientLight);
+const sunLight = new THREE.DirectionalLight(0x668ca0, 0.6); 
+sunLight.position.set(20, 40, 20);
+scene.add(sunLight);
+
+const gridHelper = new THREE.GridHelper(100, 50, 0x668ca0, 0x10141e);
+gridHelper.material.opacity = 0.4; gridHelper.material.transparent = true;
+scene.add(gridHelper);
+
+function makeMat(color, emissive=0x000000) { 
+  return new THREE.MeshStandardMaterial({ color: color, roughness: 0.6, metalness: 0.4, emissive: emissive }); 
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// 1. SCENE ASSETS 
+// ──────────────────────────────────────────────────────────────────────────
+
+const sensorGroup = new THREE.Group();
+sensorGroup.position.set(-14, 0, 0);
+sensorGroup.add(new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.5, 3.5), makeMat(0x2a2d34)).translateY(0.25)); 
+sensorGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 4, 8), makeMat(0x444444)).translateY(2.5)); 
+const dishBody = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.4, 0.25, 16), makeMat(0x10141e)); 
+dishBody.position.y = 4.7; dishBody.rotation.x = Math.PI * 0.25;
+sensorGroup.add(dishBody);
+const rim = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.08, 8, 24), new THREE.MeshBasicMaterial({color: 0x668ca0})); 
+rim.position.y = 4.7; rim.rotation.x = Math.PI * 0.25;
+sensorGroup.add(rim);
+scene.add(sensorGroup);
+
+const armourGroup = new THREE.Group();
+armourGroup.position.set(14, 0, -2);
+armourGroup.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 3.5), makeMat(0x111111)).translateY(0.6));
+armourGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 0.2, 12), new THREE.MeshBasicMaterial({color: 0x9e5a5a})).translateY(1.3));
+armourGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.8, 12), makeMat(0x1a1c20)).translateY(1.6));
+const barrel = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.15, 0.15), makeMat(0x444444)); 
+barrel.position.set(-1.5, 1.8, 0);
+armourGroup.add(barrel);
+const statusLight = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshBasicMaterial({color: 0x668ca0}));
+statusLight.position.set(0, 2.2, 0.8);
+armourGroup.add(statusLight);
+scene.add(armourGroup);
+
+const vayuGroup = new THREE.Group();
+vayuGroup.position.set(12, 0.5, 3);
+const vayuBodyGeo = new THREE.ConeGeometry(1, 2.5, 3);
+vayuBodyGeo.rotateX(Math.PI / 2);
+const vayuBody = new THREE.Mesh(vayuBodyGeo, makeMat(0xffffff, 0x111111)); 
+vayuGroup.add(vayuBody);
+const vayuEngine = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), new THREE.MeshBasicMaterial({color: 0x668ca0}));
+vayuEngine.position.set(0, 0, -1.2);
+vayuGroup.add(vayuEngine);
+scene.add(vayuGroup);
+
+const pad = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 3), makeMat(0x2a2d34));
+pad.position.set(12, 0.1, 3);
+scene.add(pad);
+
+const satGroup = new THREE.Group();
+satGroup.position.set(0, 25, -10);
+satGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 0.8), makeMat(0xffffff))); 
+satGroup.add(new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.1, 0.85), new THREE.MeshBasicMaterial({color: 0x9e5a5a}))); 
+const panelMat = makeMat(0x8899aa, 0x112233); 
+satGroup.add(new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.02, 0.9), panelMat).translateX(-2.1));
+satGroup.add(new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.02, 0.9), panelMat).translateX(2.1));
+scene.add(satGroup);
+
+const threatGroup = new THREE.Group();
+threatGroup.position.set(0, 8, 4);
+const dronePositions = [[0,0,0], [1.2,0.3,0.8], [-1.1,0.2,-0.7], [0.5,0.5,-1.0]];
+dronePositions.forEach(([x,y,z]) => {
+  const d = new THREE.Group();
+  d.add(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), makeMat(0xffffff, 0x111111))); 
+  d.add(new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.25), new THREE.MeshBasicMaterial({color: 0xff3333}))); 
+  d.position.set(x, y, z);
+  threatGroup.add(d);
+});
+scene.add(threatGroup);
+
+// ──────────────────────────────────────────────────────────────────────────
+// 2. ANIMATION LOOP
+// ──────────────────────────────────────────────────────────────────────────
+let clock = new THREE.Clock();
+let scanCone = null, targetWireBox = null;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  satGroup.rotation.y = t * 0.1; satGroup.position.y = 25 + Math.sin(t * 0.5) * 0.5;
+  
+  if (currentState < 3) {
+    threatGroup.position.y = 8 + Math.sin(t * 0.8) * 0.5;
+    threatGroup.children.forEach((d, i) => d.position.y = dronePositions[i][1] + Math.sin(t * 2 + i) * 0.2);
+  }
+
+  if (currentState >= 1 && !vayuFlying) {
+     vayuGroup.position.y = 0.5 + Math.sin(t * 3) * 0.1;
+  }
+
+  dishBody.rotation.y = t * 0.5; rim.rotation.y = t * 0.5;
+  if (scanCone) scanCone.material.opacity = 0.15 + 0.1 * Math.sin(t * 4);
+  if (targetWireBox) targetWireBox.rotation.y = t * 0.3;
+
+  renderer.render(scene, camera); 
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// UI LOGIC & THEME TOGGLES
+// ──────────────────────────────────────────────────────────────────────────
+const terminal = document.getElementById('terminal');
+function log(text, cls = '', delay = 0) {
+  setTimeout(() => {
+    const line = document.createElement('div');
+    line.className = 'term-line ' + cls; 
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+    line.textContent = `[${time}] ${text}`;
+    terminal.appendChild(line); terminal.scrollTop = terminal.scrollHeight;
+  }, delay);
+}
+
+log('// AEGIS DOMAIN COMMAND ESTABLISHED', 'dim', 0);
+log('>> BHUMI (GND) & VAYU (AIR) ASSETS CONNECTED', 'primary', 200);
+log('>> AWAITING OPERATOR INPUT', 'white', 600);
+
+const stateBadge = document.getElementById('state-badge');
+function showBtn(id, show = true) { document.getElementById(id).style.display = show ? 'block' : 'none'; }
+function showFlex(id, show = true) { document.getElementById(id).style.display = show ? 'grid' : 'none'; }
+function setBadge(text, color = 'var(--clr-primary)') {
+  stateBadge.textContent = 'STATUS: ' + text;
+  stateBadge.style.color = color; stateBadge.style.borderColor = color;
+  stateBadge.style.boxShadow = `0 0 15px ${color}40`;
+}
+
+function updateRange(val) {
+  document.getElementById('range-val').textContent = String(val).padStart(3, '0') + 'm';
+  threatGroup.position.z = 4 + (val - 85) * 0.03;
+}
+
+function toggleNVG() {
+    nvgActive = !nvgActive;
+    if(nvgActive) {
+        document.getElementById('canvas-wrapper').classList.add('nvg-active');
+        document.getElementById('btn-nvg').innerText = "DISABLE NIGHT VISION";
+        document.getElementById('btn-nvg').style.color = "var(--clr-nvg)";
+        log('>> THERMAL/NVG OPTICS ENGAGED', 'white', 0);
+    } else {
+        document.getElementById('canvas-wrapper').classList.remove('nvg-active');
+        document.getElementById('btn-nvg').innerText = "ENABLE NIGHT VISION";
+        document.getElementById('btn-nvg').style.color = "var(--text-muted)";
+        log('>> OPTICS RETURNED TO STANDARD', 'dim', 0);
+    }
+}
+
+function toggleDayNight() {
+    isDayMode = !isDayMode;
+    const body = document.body;
+    const btn = document.getElementById('btn-day');
+
+    if(isDayMode) {
+        body.classList.add('day-mode');
+        btn.innerText = "SWITCH TO NIGHT MODE";
+        btn.style.color = "var(--clr-orange)"; 
+        
+        renderer.setClearColor(0xe8ecef, 1);
+        scene.fog.color.setHex(0xe8ecef);
+        ambientLight.intensity = 0.8; 
+        sunLight.color.setHex(0xffffff); 
+        sunLight.intensity = 1.0;
+        gridHelper.material.color.setHex(0x0055ff); 
+        
+        log('>> DAYLIGHT METEOROLOGICAL SHIFT DETECTED', 'primary', 0);
+        log('>> OPTICS AUTO-ADJUSTED FOR SUN GLARE', 'dim', 100);
+    } else {
+        body.classList.remove('day-mode');
+        btn.innerText = "SWITCH TO DAY MODE";
+        btn.style.color = "var(--text-muted)";
+        
+        renderer.setClearColor(0x05080f, 1);
+        scene.fog.color.setHex(0x05080f);
+        ambientLight.intensity = 0.2; 
+        sunLight.color.setHex(0x668ca0); 
+        sunLight.intensity = 0.6;
+        gridHelper.material.color.setHex(0x668ca0);
+        
+        log('>> SUNSET DETECTED. SHIFTING TO TACTICAL NIGHT OPS.', 'primary', 0);
+    }
+}
+
+function startGPS() {
+    let lat = 32.7266; let lon = 74.8570;
+    gpsInterval = setInterval(() => {
+        lat += (Math.random() - 0.5) * 0.0001;
+        lon += (Math.random() - 0.5) * 0.0001;
+        document.getElementById('gps-readout').innerText = `LAT: ${lat.toFixed(4)}N LON: ${lon.toFixed(4)}E`;
+        
+        let az = 45.2 + (Math.random() - 0.5);
+        let el = 12.1 + (Math.random() - 0.5);
+        document.getElementById('tele-alt').innerText = `${az.toFixed(1)}° / ${el.toFixed(1)}°`;
+    }, 500);
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// TACTICAL SEQUENCES
+// ──────────────────────────────────────────────────────────────────────────
+function triggerState1() {
+  if (currentState !== 0) return; currentState = 1; 
+  setBadge('SCANNING', 'var(--clr-primary)');
+  showBtn('btn-scan', false); showBtn('btn-uplink', true);
+  document.getElementById('range-control').style.display = 'block';
+  
+  startGPS();
+
+  log('>> INITIATING YAMNET ACOUSTIC SWEEP...', 'primary', 100);
+  log('>> YOLOv8 OPTICAL LOCK ACQUIRED', 'primary', 400);
+  log('>> THREAT DETECTED: SWARM SIGNATURE (DRONE)', 'orange', 800);
+  log('>> VAYU INTERCEPTOR ENGINES SPUN UP', 'amber', 1200);
+
+  vayuEngine.material.color.setHex(0xf59e0b);
+
+  scanCone = new THREE.Mesh(
+    new THREE.ConeGeometry(6, 14, 32, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x0055ff, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false })
+  );
+  scanCone.position.set(-14, 5, 0);
+  scanCone.setRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), new THREE.Vector3(14,3,4).normalize()));
+  scene.add(scanCone);
+
+  targetWireBox = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 3, 4),
+    new THREE.MeshBasicMaterial({ color: 0x9e5a5a, wireframe: true, transparent: true, opacity: 0.8 })
+  );
+  targetWireBox.position.copy(threatGroup.position);
+  scene.add(targetWireBox);
+  gsap.from(targetWireBox.scale, {x:0, y:0, z:0, duration: 0.8, ease:'expo.out'});
+}
+
+function triggerState2() {
+  if (currentState !== 1) return; currentState = 2; 
+  setBadge('C4ISR UPLINK', 'var(--clr-amber)');
+  showBtn('btn-uplink', false); document.getElementById('range-control').style.display = 'none';
+
+  log('>> PACKAGING SECURE JSON TELEMETRY...', 'amber', 100);
+  log('>> TRANSMITTING B.L.O.S TO COMMAND...', 'amber', 600);
+  document.getElementById('tele-link').textContent = 'SECURE';
+  document.getElementById('tele-link').style.color = 'var(--clr-primary)';
+
+  dataPacketMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.3, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xf59e0b }) 
+  );
+  dataPacketMesh.position.set(-14, 5, 0); scene.add(dataPacketMesh);
+
+  const tl = gsap.timeline();
+  tl.to(dataPacketMesh.position, { x: satGroup.position.x, y: satGroup.position.y, z: satGroup.position.z, duration: 0.6, ease: 'power2.in' });
+  tl.to(dataPacketMesh.position, { x: armourGroup.position.x, y: 2, z: armourGroup.position.z, duration: 0.5, ease: 'power2.out' });
+  
+  tl.call(() => {
+    scene.remove(dataPacketMesh);
+    showFlex('action-buttons', true);
+    statusLight.material.color.setHex(0x9e5a5a); // Crimson Armed
+    log('>> SUDARSHAN AI ARMED. SELECT KILL CHAIN.', 'orange', 100);
+    document.getElementById('tele-asset').textContent = 'BHUMI + VAYU';
+    document.getElementById('tele-asset').style.color = 'var(--clr-amber)';
+  });
+}
+
+function triggerSoftKill() {
+  if (currentState !== 2) return; currentState = 3; 
+  setBadge('MESH INJECT', 'var(--clr-amber)'); showFlex('action-buttons', false);
+  log('>> EXECUTING ECM PROTOCOL INJECTION', 'amber', 100);
+  
+  if(targetWireBox) gsap.to(targetWireBox.material, {opacity: 0, duration: 1});
+  gsap.to(threatGroup.position, { y: 0.5, duration: 3, ease: 'power2.inOut', onComplete: () => { 
+      setBadge('SECURED', 'var(--clr-primary)'); 
+      log('>> SWARM GROUNDED VIA EW OVERRIDE', 'white', 100); 
+      clearInterval(gpsInterval);
+  }});
+  
+  const pulse = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 16, 64), new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true }));
+  pulse.rotation.x = Math.PI / 2; pulse.position.copy(threatGroup.position); scene.add(pulse);
+  gsap.to(pulse.scale, { x: 15, y: 15, z: 15, duration: 1.5, ease: 'power2.out' });
+  gsap.to(pulse.material, { opacity: 0, duration: 1.5, ease: 'power2.out', onComplete: () => scene.remove(pulse) });
+}
+
+function triggerHardKill() {
+  if (currentState !== 2) return; currentState = 3; 
+  setBadge('RCWS STRIKE', 'var(--clr-orange)'); showFlex('action-buttons', false);
+  log('>> FIRING 30MM KINETIC ROUND', 'orange', 100);
+
+  const laserMat = new THREE.LineBasicMaterial({ color: 0x9e5a5a, linewidth: 2 });
+  const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(12.5, 2, -2), threatGroup.position.clone()]);
+  laserLine = new THREE.Line(laserGeo, laserMat); scene.add(laserLine);
+
+  setTimeout(() => {
+    gsap.to(threatGroup.scale, { x: 0, y: 0, z: 0, duration: 0.1 });
+    if(targetWireBox) scene.remove(targetWireBox);
+    if(scanCone) scene.remove(scanCone);
+    
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(2, 32, 32), new THREE.MeshBasicMaterial({ color: 0xf59e0b }));
+    flash.position.copy(threatGroup.position); scene.add(flash);
+    gsap.to(flash.scale, { x: 3, y: 3, z: 3, duration: 0.2 });
+    gsap.to(flash.material, { opacity: 0, transparent:true, duration: 0.5, onComplete: () => scene.remove(flash) });
+
+    setTimeout(() => { 
+      scene.remove(laserLine); setBadge('DESTROYED', 'var(--clr-orange)'); 
+      clearInterval(gpsInterval); document.getElementById('tele-alt').innerText = 'NULL';
+      log('>> TARGET ANNIHILATED. THREAT NEUTRALIZED.', 'white', 100);
+    }, 500);
+  }, 200);
+}
+
+function triggerVayuKill() {
+  if (currentState !== 2) return; currentState = 3; 
+  vayuFlying = true;
+  setBadge('VAYU INTERCEPT', 'var(--clr-primary)'); showFlex('action-buttons', false);
+  log('>> LAUNCHING AEGIS VAYU (DRONE-ON-DRONE)', 'primary', 100);
+  document.getElementById('tele-asset').textContent = 'VAYU (AIR)';
+
+  const tl = gsap.timeline();
+  tl.to(vayuGroup.position, { y: 12, duration: 1, ease: 'power2.out' });
+  tl.to(vayuGroup.rotation, { y: Math.PI / 1.5, duration: 0.5 }, "-=0.5");
+  tl.to(vayuGroup.position, { x: 1, y: 8, z: 3.5, duration: 0.7, ease: 'power2.in' });
+  
+  tl.call(() => {
+    log('>> TERMINAL GUIDANCE LOCKED. COLLISION IMMINENT.', 'primary', 0);
+    
+    const empFlash = new THREE.Mesh(new THREE.SphereGeometry(2.5, 32, 32), new THREE.MeshBasicMaterial({ color: 0x668ca0, transparent: true, opacity: 0.9 }));
+    empFlash.position.copy(threatGroup.position); scene.add(empFlash);
+    gsap.to(empFlash.scale, { x: 4, y: 4, z: 4, duration: 0.3 });
+    gsap.to(empFlash.material, { opacity: 0, duration: 0.5, onComplete: () => scene.remove(empFlash) });
+
+    gsap.to(threatGroup.scale, { x: 0, y: 0, z: 0, duration: 0.1 });
+    if(targetWireBox) scene.remove(targetWireBox);
+    if(scanCone) scene.remove(scanCone);
+
+    setTimeout(() => { 
+      setBadge('SWARM NEUTRALIZED', 'var(--clr-primary)'); 
+      clearInterval(gpsInterval); document.getElementById('tele-alt').innerText = 'NULL';
+      log('>> INTERCEPT SUCCESSFUL. VAYU RTB.', 'white', 100);
+    }, 400);
+  });
+
+  tl.to(vayuGroup.position, { x: -20, y: 15, z: -10, duration: 1.5, ease: 'power1.out' }, "+=0.1");
+}
+
+function resetSystem() {
+  if (currentState === 0) return; 
+  currentState = 0; vayuFlying = false;
+
+  clearInterval(gpsInterval);
+
+  gsap.killTweensOf(threatGroup.scale); gsap.killTweensOf(threatGroup.position);
+  gsap.killTweensOf(vayuGroup.position); gsap.killTweensOf(vayuGroup.rotation);
+  if (targetWireBox) gsap.killTweensOf(targetWireBox.scale);
+
+  threatGroup.scale.set(1, 1, 1); threatGroup.position.set(0, 8, 4);
+  vayuGroup.position.set(12, 0.5, 3); vayuGroup.rotation.set(0, 0, 0);
+  vayuEngine.material.color.setHex(0x668ca0); 
+  statusLight.material.color.setHex(0x668ca0); 
+
+  if (scanCone) { scene.remove(scanCone); scanCone = null; }
+  if (targetWireBox) { scene.remove(targetWireBox); targetWireBox = null; }
+  if (laserLine) { scene.remove(laserLine); laserLine = null; }
+  if (dataPacketMesh) { scene.remove(dataPacketMesh); dataPacketMesh = null; }
+
+  setBadge('STANDBY', 'var(--clr-primary)');
+  showBtn('btn-scan', true); showBtn('btn-uplink', false); showFlex('action-buttons', false);
+  
+  document.getElementById('range-control').style.display = 'none';
+  document.getElementById('range-slider').value = 85; updateRange(85);
+
+  document.getElementById('gps-readout').innerText = `LAT: -- LON: --`;
+  document.getElementById('tele-alt').textContent = '-- / --';
+  document.getElementById('tele-asset').textContent = 'BHUMI (GND)';
+  document.getElementById('tele-asset').style.color = 'var(--text-muted)';
+  document.getElementById('tele-link').textContent = 'OFFLINE';
+  document.getElementById('tele-link').style.color = 'var(--clr-orange)';
+
+  terminal.innerHTML = '';
+  log('// SYSTEM ZEROIZE / HARD REBOOT INITIATED...', 'dim', 0);
+  log('>> RAM CACHE CLEARED. SENSORS REALIGNED.', 'primary', 200);
+  log('>> AWAITING OPERATOR INPUT', 'white', 600);
+}
+</script>
+</body>
+</html>
